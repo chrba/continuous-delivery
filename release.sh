@@ -37,10 +37,10 @@ fi
 
 STAGING_DIR=$(cd "$1"; pwd)
 GIT_ARTIFACT=$(cd "$2"; pwd)
-GIT_MASTER=$(cd "$3"; pwd)
+GIT_MASTER_URI=$3
 NEXUS=$4
 HOST="$NEXUS/content/repositories/releases/"
-
+DIR="$(pwd)"
 ########################################################################
 #			Release all files to nexus using http PUT
 ########################################################################
@@ -57,10 +57,14 @@ done
 ########################################################################
 
 echo "Push all tags from $GIT_ARTIFACT_DIR to master repository"
-cd "$GIT_MASTER"
+
+cd "$DIR"
+git clone "$GIT_MASTER_URI" tmp
+cd tmp
 git remote add staging "$GIT_ARTIFACT"
 git fetch staging
 git merge staging/MASTER
 git push origin --tags
 git remote rm staging
-
+cd ..
+rm -rf tmp
