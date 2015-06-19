@@ -6,7 +6,7 @@ set -e
 #			Input parameter check
 ########################################################################
 
-function usage {
+usage() {
 	echo "Usage: $0 [STAGING_DIR] [GIT_ARTIFACT] [GIT_MASTER] [NEXUS_SERVER]"
 	exit 1
 }
