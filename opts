@@ -17,8 +17,9 @@ function usage {
 #                       Parameter parsing
 ########################################################################
 
-ARTIFACT=$1
-NEXUS_URI=$2
+str=${2%/} #removes slash from end
+ARTIFACT=$(cd $1;pwd)
+NEXUS_URI=$str/content/repositories/releases/
 
 if [ ! -d "$ARTIFACT" ]; then
 	echo "Artifact directory must be provided"
@@ -34,41 +35,42 @@ fi
 cd "$ARTIFACT"
 
 
-STAGING_DIR="./staging"
-GIT_ARTIFACT="./tag-artifact.git"
-
-if [ ! -d "$STAGING_DIR" ]; then
+if [ ! -d "./staging" ]; then
 	echo "No stating artifact found at $ARTIFACT"
 	usage
 fi
 
-if [ ! -d "$GIT_ARTIFACT" ]; then
+if [ ! -d "./tag-artifact.git" ]; then
 	echo "No git artifact found at $ARTIFACT"
 	usage
 fi
 
-
-echo "Using:"
-echo "stagingDir=$STAGING_DIR"
-echo "gitArtifact=$GIT_ARTIFACT"
-echo "nexusUri=$NEXUS_URI"
-echo ""
-
-exit 1
+STAGING_DIR=$(cd "staging";pwd)
+GIT_ARTIFACT=$(cd "tag-artifact.git";pwd)
 #######################################################################
 #                       Release all files to nexus using http PUT
 ########################################################################
 
+cd "$STAGING_DIR"
 echo "Releasing $STAGING_DIR to nexus"
 for file in $(find . -type f); do
-        curl "${NEXUS_URI}${file:2}" --upload-file "$file"
+        res=$(curl "${NEXUS_URI}${file:2}" --upload-file "$file" --write-out %{http_code} --silent --output /dev/null)
+	if [ $res != 201 ]; then
+        	check=$(curl -I --silent --output /dev/null --write-out %{http_code} "${NEXUS_URI}${file:2}")
+		if [ $check != 200 ]; then 
+			echo ""
+			echo "Nexus returned http code $res"
+			echo "Unable to upload file to nexus: $file"
+			exit 1
+		fi
+	fi
 done
-
 ########################################################################
 #                       Push all tags from staging artifact to master
 ########################################################################
 
+cd "$GIT_ARTIFACT"
 echo "Push all tags from $GIT_ARTIFACT_DIR"
-cd $GIT_ARTIFACT_DIR
+cd $GIT_ARTIFACT
 git push origin --tags
 
