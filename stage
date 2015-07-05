@@ -110,6 +110,7 @@ if [ $COPY_SOURCES == 1 ];
 		cd "$SOURCES"
 fi
 
+GIT_REMOTE_URI=$(git config --get remote.origin.url)
 #######################################################################
 #                       Transform maven pom files
 ########################################################################
@@ -156,6 +157,8 @@ quiet git push tag-artifact.git $TAG_NAME
 quiet git push tag-artifact.git HEAD:MASTER
 
 mv tag-artifact.git "$ARTIFACTS_DIR/"
+
+(cd "$ARTIFACTS_DIR/tag-artifact.git" && git remote add origin $GIT_REMOTE_URI) 
 ################################s#######################################
 #                       Maven deploy to staging directory
 ########################################################################
