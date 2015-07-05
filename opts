@@ -8,15 +8,7 @@ set -e
 
 function usage {
 	echo ""
-	echo "Usage: $0 [PARAMS]"
-	echo ""
-	echo "PARAMS"
-	echo "  -n <nexus_url> The url to the nexus server to push the release to."
-	echo ""
-	echo "  -s <staging_dir> The directory containing the staged maven release"
-	echo ""
-	echo "  -g <git_artifact_dir> The directory containing the git artifact"d
-	echo ""
+	echo "Usage: $0 [ARTIFACT] [NEXUS_URL]"
 	exit 1
 }
 
@@ -25,31 +17,36 @@ function usage {
 #                       Parameter parsing
 ########################################################################
 
-while getopts "s:g:n:" options; do
-  case $options in
-    s ) STAGING_DIR=$(cd "$OPTARG"; pwd);;
-    g ) GIT_ARTIFACT=$(cd "$OPTARG"; pwd);;
-    n ) NEXUS_URI="$OPTARG/content/repositories/releases/";;
-   \? ) usage
-        exit 1
-        ;;
-  esac
-done
+ARTIFACT=$1
+NEXUS_URI=$2
 
-if [ -z "$STAGING_DIR" ]; then
-	echo "Staging directory must be provided"
+if [ ! -d "$ARTIFACT" ]; then
+	echo "Artifact directory must be provided"
 	usage
 fi
 
-if [ -z "$GIT_ARTIFACT" ]; then
-	echo "Git artifact directory must be provided"
-	usage
-fi
 
 if [ -z "$NEXUS_URI" ]; then
 	echo "Nexus uri must be specified"
 	usage
 fi
+
+cd "$ARTIFACT"
+
+
+STAGING_DIR="./staging"
+GIT_ARTIFACT="./tag-artifact.git"
+
+if [ ! -d "$STAGING_DIR" ]; then
+	echo "No stating artifact found at $ARTIFACT"
+	usage
+fi
+
+if [ ! -d "$GIT_ARTIFACT" ]; then
+	echo "No git artifact found at $ARTIFACT"
+	usage
+fi
+
 
 echo "Using:"
 echo "stagingDir=$STAGING_DIR"
@@ -57,7 +54,7 @@ echo "gitArtifact=$GIT_ARTIFACT"
 echo "nexusUri=$NEXUS_URI"
 echo ""
 
-
+exit 1
 #######################################################################
 #                       Release all files to nexus using http PUT
 ########################################################################
