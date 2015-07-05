@@ -1,0 +1,77 @@
+#!/bin/bash
+
+set -e 
+
+#######################################################################
+#                       Usage
+########################################################################
+
+function usage {
+	echo ""
+	echo "Usage: $0 [PARAMS]"
+	echo ""
+	echo "PARAMS"
+	echo "  -n <nexus_url> The url to the nexus server to push the release to."
+	echo ""
+	echo "  -s <staging_dir> The directory containing the staged maven release"
+	echo ""
+	echo "  -g <git_artifact_dir> The directory containing the git artifact"d
+	echo ""
+	exit 1
+}
+
+
+#######################################################################
+#                       Parameter parsing
+########################################################################
+
+while getopts "s:g:n:" options; do
+  case $options in
+    s ) STAGING_DIR=$(cd "$OPTARG"; pwd);;
+    g ) GIT_ARTIFACT=$(cd "$OPTARG"; pwd);;
+    n ) NEXUS_URI="$OPTARG/content/repositories/releases/";;
+   \? ) usage
+        exit 1
+        ;;
+  esac
+done
+
+if [ -z "$STAGING_DIR" ]; then
+	echo "Staging directory must be provided"
+	usage
+fi
+
+if [ -z "$GIT_ARTIFACT" ]; then
+	echo "Git artifact directory must be provided"
+	usage
+fi
+
+if [ -z "$NEXUS_URI" ]; then
+	echo "Nexus uri must be specified"
+	usage
+fi
+
+echo "Using:"
+echo "stagingDir=$STAGING_DIR"
+echo "gitArtifact=$GIT_ARTIFACT"
+echo "nexusUri=$NEXUS_URI"
+echo ""
+
+
+#######################################################################
+#                       Release all files to nexus using http PUT
+########################################################################
+
+echo "Releasing $STAGING_DIR to nexus"
+for file in $(find . -type f); do
+        curl "${NEXUS_URI}${file:2}" --upload-file "$file"
+done
+
+########################################################################
+#                       Push all tags from staging artifact to master
+########################################################################
+
+echo "Push all tags from $GIT_ARTIFACT_DIR"
+cd $GIT_ARTIFACT_DIR
+git push origin --tags
+

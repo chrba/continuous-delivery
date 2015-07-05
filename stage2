@@ -1,0 +1,142 @@
+#!/bin/bash
+set -e
+
+#######################################################################
+#                       Usage
+########################################################################
+
+function usage {
+	echo ""
+	echo "Usage: $0 [OPTIONS] [SOURCE]"
+	echo ""
+	echo "Creates a maven staging artifact and a git artifact that can be pushed to nexus and to the master git" 
+	echo "repository at a later time. The source directory must be a git maven project."
+	echo ""
+	echo "OPTIONS"
+	echo ""
+	echo "-o <OUTPUT> The output directory. Default is the current working directory."
+	echo ""
+	echo "-b <BUILD_ID> A unique build id that will be used to determine a release version number. If not provided"
+	echo "   the environment variable GO_PIPELINE_COUNTER will be used".
+	echo ""
+	echo "-v Verbose output"
+	exit 1
+}
+
+#######################################################################
+#                       Parameter parsing
+########################################################################
+
+OUTPUT_DIR=$(pwd)
+BUILD_ID=$GO_PIPELINE_COUNTER
+VERBOSE=0
+while getopts "vo:b:h\?" options; do
+	case $options in
+		o ) OUTPUT_DIR=$(cd $OPTARG ; pwd);;
+		b ) BUILD_ID=$OPTARG;;
+		v ) VERBOSE=1;;
+		h ) usage;;
+		
+	esac
+done
+
+SOURCES=$(cd "${@:$OPTIND:1}";pwd)
+
+if [ "$#" == 0 ]; then
+	usage
+fi
+
+if [ ! -d $SOURCES ];then
+	echo "No source directory provided"
+	exit 1
+fi
+
+if [ -z $BUILD_ID ];then
+	echo "No build id provided and environment variable GO_PIPELINE_COUNTER is not defined"
+	exit 1
+fi
+ 
+if [ "$VERBOSE" == 0 ]; then
+	echo ""
+	echo "Using source directory=$SOURCES"
+	echo "Using build id=$BUILD_ID"
+	echo "Using output directory=$OUTPUT_DIR"
+	echo ""
+fi
+
+DIR=$(pwd)
+#######################################################################
+#                       Create working git directoy 
+########################################################################
+
+if [ "$VERBOSE" == 0 ]; then
+	echo "Copy source to tmp directory..."
+fi
+
+TMP="/tmp/stage"
+if [[ -d $TMP ]];then
+	rm -rf $TMP
+fi
+mkdir $TMP
+cp -r "${SOURCES}/."   $TMP
+cd "$TMP"
+
+
+#######################################################################
+#                       Transform maven pom files
+########################################################################
+
+if [ "$VERBOSE" == 0 ]; then
+	echo "Transform pom file..."
+fi
+
+old_version=$(sed -e "s/xmlns/ignored/" "pom.xml"  |xmllint --xpath "/project/version/text()" -)
+if [[ $old_version != *SNAPSHOT* ]];then
+	echo "Not a snapshot version: $old_version"
+	exit 1
+fi
+
+new_version=$(echo "$old_version"|sed "s/-SNAPSHOT/.$GO_PIPELINE_COUNTER/")
+if [ $VERBOSE == 1 ]; then
+	echo "Setting version $old_version to $new_version"
+fi
+mvn -f pom.xml versions:set -DnewVersion=$new_version
+
+exit 1
+#######################################################################
+#                       Maven deploy to staging directory
+########################################################################
+
+if [ $VERBOSE == 1 ]; then
+	echo "Deploy to staging"
+fi
+mvn clean deploy -DaltDeploymentRepository="staging::default::file://$PWD/staging"
+
+if [ $? -gt 0 ]; then
+	exit $?
+fi
+
+#######################################################################
+#                       Create git artifact
+########################################################################
+
+TAG_NAME="v$new_version"
+
+if [ $VERBOSE == 1 ]; then
+	echo "Using tagname $TAG_NAME"
+fi
+(git add pom.xml && git commit -m "Release version $new_version" && git tag $TAG_NAME) 
+
+
+if [ $VERBOSE == 1 ]; then
+	echo "creating git stating artifact"
+fi
+
+git init --bare tag-artifact.git
+git push tag-artifact.git $TAG_NAME
+git push tag-artifact.git HEAD:MASTER
+
+
+if [ $VERBOSE == 1 ]; then
+	echo "Done."
+fi
