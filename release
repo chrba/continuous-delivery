@@ -1,70 +1,76 @@
 #!/bin/bash
 
-set -e
+set -e 
 
-########################################################################
-#			Input parameter check
+#######################################################################
+#                       Usage
 ########################################################################
 
 function usage {
-	echo "Usage: $0 [STAGING_DIR] [GIT_ARTIFACT] [GIT_MASTER] [NEXUS_SERVER]"
+	echo ""
+	echo "Usage: $0 [ARTIFACT] [NEXUS_URL]"
 	exit 1
 }
-if [ ! -d $1 ];then
-	echo "No staging dir provided or directory does not exist"
-	usage
-fi
 
-if [ ! -d $2 ]; then
-	echo "No artifact git repository provided or directory does not exist"
-	usage
-fi
 
-if [ ! -d $3 ]; then
-	echo "No master git repository provided or directory does not exist"
-	usage
-fi
+#######################################################################
+#                       Parameter parsing
+########################################################################
 
-if [ -z $4 ]; then
-	echo "You have to specify the address to the nexus server"
+str=${2%/} #removes slash from end
+ARTIFACT=$(cd $1;pwd)
+NEXUS_URI=$str/content/repositories/releases/
+
+if [ ! -d "$ARTIFACT" ]; then
+	echo "Artifact directory must be provided"
 	usage
 fi
 
 
-########################################################################
-#			Variable definitions
+if [ -z "$NEXUS_URI" ]; then
+	echo "Nexus uri must be specified"
+	usage
+fi
+
+cd "$ARTIFACT"
+
+
+if [ ! -d "./staging" ]; then
+	echo "No stating artifact found at $ARTIFACT"
+	usage
+fi
+
+if [ ! -d "./tag-artifact.git" ]; then
+	echo "No git artifact found at $ARTIFACT"
+	usage
+fi
+
+STAGING_DIR=$(cd "staging";pwd)
+GIT_ARTIFACT=$(cd "tag-artifact.git";pwd)
+#######################################################################
+#                       Release all files to nexus using http PUT
 ########################################################################
 
-STAGING_DIR=$(cd "$1"; pwd)
-GIT_ARTIFACT=$(cd "$2"; pwd)
-GIT_MASTER_URI=$3
-NEXUS=$4
-HOST="$NEXUS/content/repositories/releases/"
-DIR="$(pwd)"
-########################################################################
-#			Release all files to nexus using http PUT
-########################################################################
-
+cd "$STAGING_DIR"
 echo "Releasing $STAGING_DIR to nexus"
-cd $STAGING_DIR
 for file in $(find . -type f); do
-	curl "${HOST}${file:2}" --upload-file "$file"
+        res=$(curl "${NEXUS_URI}${file:2}" --upload-file "$file" --write-out %{http_code} --silent --output /dev/null)
+	if [ $res != 201 ]; then
+        	check=$(curl -I --silent --output /dev/null --write-out %{http_code} "${NEXUS_URI}${file:2}")
+		if [ $check != 200 ]; then 
+			echo ""
+			echo "Nexus returned http code $res"
+			echo "Unable to upload file to nexus: $file"
+			exit 1
+		fi
+	fi
 done
-
-
 ########################################################################
-#			Push all tags from staging artifact to master
+#                       Push all tags from staging artifact to master
 ########################################################################
 
-echo "Push all tags from $GIT_ARTIFACT_DIR to master repository"
-
-cd "$DIR"
-git clone "$GIT_MASTER_URI" tmp
-cd tmp
-git remote add staging "$GIT_ARTIFACT"
-git fetch staging
-git merge staging/MASTER
+cd "$GIT_ARTIFACT"
+echo "Push all tags from $GIT_ARTIFACT_DIR"
+cd $GIT_ARTIFACT
 git push origin --tags
-git remote rm staging
-cd ..
-rm -rf tmp
+
